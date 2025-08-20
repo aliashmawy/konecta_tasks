@@ -1,0 +1,47 @@
+- name: Install-Nodejs
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Install Nodejs and npm
+      ansible.builtin.apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+        update_cache: true
+
+    - name: Create App Dir
+      ansible.builtin.file:
+        path: /opt/my_node_app
+        state: directory
+        mode: '0755'
+        
+    - name: Copy Node.js app files
+      ansible.builtin.copy:
+        src: "files/{{ item }}"
+        dest: "/opt/my_node_app/{{ item }}"
+      loop:
+        - app.js
+        - package.json
+
+    
+    - name: Install dependencies  
+      npm:
+        path: /opt/my_node_app
+    
+    - name: Copy node .service file
+      ansible.builtin.copy:
+        src: templates/my_node_app.service.j2
+        dest: /etc/systemd/system/my_node_app.service
+    
+    - name: reload daemon
+      command: systemctl daemon-reload
+
+    - name: Enable and start app.js
+      systemd:
+        name: my_node_app
+        enabled: yes
+        state: started
+
+    

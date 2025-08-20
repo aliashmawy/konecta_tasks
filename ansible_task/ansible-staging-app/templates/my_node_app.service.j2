@@ -1,0 +1,12 @@
+[Unit]
+Description=my Konecta Nodejs App made by Ali
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/node opt/my_node_app/app.js
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
