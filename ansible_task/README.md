@@ -179,3 +179,24 @@ WantedBy=multi-user.target
 ### Note
 
 - All verification methods can be done also by registering the task and using the debug module to print out the output
+---
+
+## Bonus
+
+### Dynamic Inventory
+
+- For inventory, if you have lots of node machines on AWS and you don’t want to specify them one by one
+- We can use Ansible dynamic inventory
+- Like in the example below we Target only EC2s in `us-east-1` region, that has a tag with Name beginning with `node`
+
+```yaml
+---
+plugin: aws_ec2
+regions:
+  - us-east-1
+filters:
+  tag:Name: node*
+```
+
+- Make sure to add `enable_plugins = aws_ec2, yaml` in `ansible.cfg` along with the user and private key for the machines
+- Also make sure to have AWS CLI installed along with `aws configure` execution for credentials
