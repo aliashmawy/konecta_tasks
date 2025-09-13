@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'ec2_ip', defaultValue: '', description: 'Public IP of target EC2 (from Pipeline 1)')
+    }
+
+    environment {
+        DOCKER_IMAGE = "docker.io/aliashmawy/nginx-ci:${BUILD_NUMBER}"
+        DOCKER_DIR = 'pipeline1/'
+    }
+
+    stages {
+        stage('Clean Workspace') {
+      steps {
+        deleteDir()
+      }
+    }
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir("${DOCKER_DIR}") {
+                script {
+                    def timestamp = sh(script: "date +%Y-%m-%d_%H-%M-%S", returnStdout: true).trim()
+                    sh """
+                        echo '<h1>Build: ${BUILD_NUMBER}</h1><p>Timestamp: ${timestamp}</p>' > index.html
+                        docker build -t ${DOCKER_IMAGE} .
+                    """
+                }
+            }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                echo "docker push is running now"
+                withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh "echo $PASSWORD | docker login -u $USERNAME --password-stdin"
+                    sh "docker push ${DOCKER_IMAGE}"
+            }
+        }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'ephemeral-instance',
+                                    keyFileVariable: 'SSH_KEY_FILE',
+                                    usernameVariable: 'SSH_USER'),
+                    usernamePassword(credentialsId: 'docker-cred',
+                                usernameVariable: 'USERNAME',
+                                passwordVariable: 'PASSWORD')
+                ]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -i "\$SSH_KEY_FILE" "\$SSH_USER"@${params.ec2_ip} '
+                            echo "Logging into Docker Hub..."
+                            echo ${PASSWORD} | docker login -u ${USERNAME} --password-stdin
+                            
+                            echo "Stopping existing container..."
+                            docker rm -f web || true
+                            
+                            echo "Pulling and running new container..."
+                            docker run -d --name web -p 80:80 ${DOCKER_IMAGE}
+                        '
+                    """
+        }
+    }
+}
+
+        stage('Verify Deployment') {
+            steps {
+                sh """
+                    curl -s http://${params.ec2_ip}
+                """
+            }
+        }
+    }
+}

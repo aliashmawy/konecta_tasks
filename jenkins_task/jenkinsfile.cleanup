@@ -1,0 +1,26 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Cleanup Ephemeral EC2s') {
+            steps {
+                withAWS(credentials: 'aws-cleanup-creds', region: 'us-east-1') {
+                    sh '''
+                        INSTANCE_IDS=$(aws ec2 describe-instances \
+                          --filters "Name=tag:lifespan,Values=ephemeral" \
+                                    "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+                          --query "Reservations[].Instances[].InstanceId" \
+                          --output text)
+
+                        if [ -n "$INSTANCE_IDS" ]; then
+                          aws ec2 terminate-instances --instance-ids $INSTANCE_IDS
+                          echo " Terminated instances: $INSTANCE_IDS"
+                        else
+                          echo "ℹ No ephemeral instances found."
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+}

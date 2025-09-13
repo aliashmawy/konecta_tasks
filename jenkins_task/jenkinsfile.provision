@@ -1,0 +1,85 @@
+pipeline {
+  agent any
+
+  environment {
+    TF_DIR = 'pipeline1/terraform'
+    ANSIBLE_DIR = 'pipeline1/ansible'
+    AWS_ACCESS_KEY_ID = credentials('access_key')
+    AWS_SECRET_ACCESS_KEY = credentials('secret_key')
+  }
+
+  stages {
+    stage('Clean Workspace') {
+      steps {
+        deleteDir()
+      }
+    }
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+
+    stage('Terraform Init') {
+      steps {
+        dir("${TF_DIR}") {
+          sh 'terraform init'
+        }
+      }
+    }
+    
+    stage('Terraform Validate'){
+      steps {
+        dir("${TF_DIR}") {
+          sh 'terraform validate'
+        }
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        dir("${TF_DIR}") {
+          sh 'terraform plan -out=tfplan'
+        }
+      }
+    }
+
+    stage('Terraform Apply') {
+      steps {
+        dir("${TF_DIR}") {
+          sh 'terraform apply -auto-approve tfplan'
+        }
+      }
+    }
+    stage('Pass EC2 IP to Pipeline 2') {
+    steps {
+        dir("${TF_DIR}") {
+        script {
+            def ec2_ip = sh(script: "terraform output -raw public_instance_ip", returnStdout: true).trim()
+            echo "EC2 IP is ${ec2_ip}"
+
+            build job: 'pipeline2-konecta',
+                  parameters: [string(name: 'ec2_ip', value: ec2_ip)],
+                  wait: false
+        }
+        }
+    }
+}
+    stage('Run Ansible') {
+      steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'ephemeral-instance',
+                                          keyFileVariable: 'SSH_KEY_FILE',
+                                          usernameVariable: 'SSH_USER')]) {
+          dir("${ANSIBLE_DIR}"){
+          sh '''
+            chmod 600 "$SSH_KEY_FILE"
+            ansible-playbook -i inventroy_aws_ec2.yaml --private-key "$SSH_KEY_FILE" -u "$SSH_USER" playbook.yaml
+          '''
+        }
+        }
+      }
+    }
+  }
+}
